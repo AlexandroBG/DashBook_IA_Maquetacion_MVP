@@ -1,6 +1,6 @@
-*[Leer en castellano](#dashbook-ia--de-manuscrito-a-libro-maquetado)*
+*[Leer en castellano](#ia--de-manuscrito-a-libro-maquetado)*
 
-# DashBook IA — from manuscript to typeset book
+# From manuscript to typeset book
 
 This project started with a fairly concrete question: can you take any
 manuscript (a PDF, a Word doc, a plain TXT) and turn it into a book with
@@ -72,7 +72,7 @@ AI provider, the rendering engine) without one change quietly breaking
 something else.
 
 ```
-DashBook_IA_Maquetacion/
+IA_Maquetacion/
 ├── app.py                    # Streamlit interface — just the screen, no business logic
 ├── config.py                 # Global config: paths, languages, AI settings
 │
@@ -216,9 +216,9 @@ up right.
 
 ---
 
-*[Read in English](#dashbook-ia--from-manuscript-to-typeset-book)*
+*[Read in English](#ia--from-manuscript-to-typeset-book)*
 
-# DashBook IA — de manuscrito a libro maquetado
+# IA — de manuscrito a libro maquetado
 
 Este proyecto nació de una pregunta bastante concreta: ¿se puede coger un
 manuscrito cualquiera (un PDF, un Word, un TXT) y convertirlo en un libro
@@ -289,7 +289,7 @@ proveedor de IA, el motor de render, etc.) sin que un cambio en un sitio
 rompiera otro sin avisar.
 
 ```
-DashBook_IA_Maquetacion/
+IA_Maquetacion/
 ├── app.py                    # Interfaz Streamlit — solo la pantalla, sin lógica
 ├── config.py                 # Configuración: rutas, idiomas, IA
 │
