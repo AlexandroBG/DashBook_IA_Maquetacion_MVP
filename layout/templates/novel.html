@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+<meta charset="utf-8">
+<title>{{ metadata.title }}</title>
+<style>
+{{ base_css | safe }}
+{{ page_geometry_css | safe }}
+</style>
+</head>
+<body>
+
+  <!-- ============================= PORTADILLA ============================= -->
+  <section class="half-title-page full-page">
+    <p class="half-title">{{ front_matter.half_title }}</p>
+  </section>
+
+  <!-- ============================== PORTADA ================================ -->
+  <section class="title-page full-page">
+    <h1 class="title-page-title">{{ front_matter.title_page_title }}</h1>
+    {% if front_matter.title_page_subtitle %}
+    <p class="title-page-subtitle">{{ front_matter.title_page_subtitle }}</p>
+    {% endif %}
+    <p class="title-page-author">{{ front_matter.title_page_author }}</p>
+    {% if metadata.publisher %}
+    <p class="title-page-publisher">{{ metadata.publisher }}</p>
+    {% endif %}
+  </section>
+
+  <!-- ============================= COPYRIGHT ================================ -->
+  <section class="copyright-page full-page">
+    <div class="copyright-block">
+      {% for line in front_matter.copyright_block.split('\n') %}
+        {% if line.strip() %}<p>{{ line }}</p>{% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ============================ DEDICATORIA =============================== -->
+  {% if front_matter.dedication %}
+  <section class="dedication-page full-page">
+    <p class="dedication-text">{{ front_matter.dedication }}</p>
+  </section>
+  {% endif %}
+
+  <!-- ================================ ÍNDICE ================================= -->
+  {% if metadata.include_toc %}
+  <section class="toc-page">
+    <h2 class="toc-title">{{ toc_title }}</h2>
+    <ul class="toc-list">
+      {% for chapter in chapters %}
+      <li class="toc-entry">
+        <span class="toc-chapter-title">{{ chapter.title }}</span>
+        <span class="toc-leader"></span>
+        <span class="toc-page-number">
+          <a href="#chapter-{{ chapter.order }}"></a>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <!-- =============================== CAPÍTULOS ================================ -->
+  {% for chapter in chapters %}
+  <section class="chapter" id="chapter-{{ chapter.order }}">
+    <h2 class="chapter-title" data-running-head="{{ chapter.title }}">{{ chapter.title }}</h2>
+    <div class="chapter-body">
+      {{ chapter.html_content | safe }}
+    </div>
+  </section>
+  {% endfor %}
+
+</body>
+</html>
