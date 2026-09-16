@@ -1,224 +1,155 @@
-# DashBook IA Maquetación
+*[Leer en castellano](#dashbook-ia--de-manuscrito-a-libro-maquetado)*
 
-Fábrica de libros maquetados: convierte un manuscrito (PDF, DOCX, TXT o
-Markdown) en un libro con **paginación real**, listo para imprenta o
-para subir a Amazon KDP.
+# DashBook IA — from manuscript to typeset book
 
-Idiomas soportados: **castellano, català, français, italiano, English.**
+This project started with a fairly concrete question: can you take any
+manuscript (a PDF, a Word doc, a plain TXT) and turn it into a book with
+real typesetting — the kind you could send to a printer or upload to
+Amazon KDP — without an editor having to open InDesign by hand?
 
-## Qué hace, exactamente
+Short answer: yes, but with some interesting nuances. And those nuances
+are what make this project worth talking about.
 
-- Detecta automáticamente la estructura de capítulos del manuscrito
-  (heurística por patrones específica de cada idioma + fallback con IA
-  para casos difíciles — el modelo solo *localiza* títulos literales
-  dentro del texto, nunca reescribe ni resume contenido).
-- Genera el front matter (portadilla, página de título, copyright,
-  dedicatoria) con IA, en el idioma del manuscrito.
-- Genera, opcionalmente, **metadatos comerciales para la ficha de
-  venta** (sinopsis de contraportada, palabras clave, categorías) —
-  "front matter hacia afuera": lo que ve un lector en la tienda, nunca
-  dentro del PDF. Si este paso falla, el libro se compone igual.
-- Ejecuta, opcionalmente, un **control de calidad editorial** con IA
-  que señala posibles inconsistencias (un nombre escrito de dos formas
-  distintas, por ejemplo) para que un editor humano decida — la IA
-  nunca modifica el texto del autor, solo lo señala. Si este paso
-  falla, el libro se compone igual.
-- Limpia y normaliza la tipografía por idioma: comillas «guillemets» en
-  es/ca/it/fr, comillas "curly" en inglés, espacio fino insecable antes
-  de `; : ! ?` en francés (regla de la Imprimerie Nationale), rayas de
-  diálogo, arreglo de guiones de corte de línea heredados del documento
-  original.
-- Compone el libro con **CSS Paged Media** (vía WeasyPrint):
-  - Numeración de página real (no inventada), calculada por el motor
-    de composición, no por el modelo de IA.
-  - Márgenes espejo con **gutter dinámico** según el número de páginas
-    final del libro (tabla oficial de KDP). Se resuelve en **doble
-    pasada**: una primera composición estima el nº de páginas, y la
-    segunda (definitiva) recalcula el gutter con el nº de páginas real.
-  - Capítulos que siempre inician en página recta (impar), con página
-    en blanco automática cuando hace falta.
-  - Control de viudas y huérfanas, guionado automático por idioma.
-  - Índice con números de página verdaderos, resueltos por el propio
-    motor de composición (`target-counter`), no por la IA.
-  - Cabeceras vivas (running heads) con el título del capítulo.
+It works in Spanish, Catalan, French, Italian, and English.
 
-## Qué NO hace (todavía)
+## The core idea
 
-- Solo existe una plantilla de estilo ("novel"). Falta una para no
-  ficción y otra para libros infantiles/ilustrados.
-- No valida automáticamente contra todas las reglas de una imprenta
-  específica más allá del gutter — revisa siempre los requisitos
-  exactos de tu proveedor de impresión antes de enviar el archivo
-  final.
-- La detección de capítulos asume manuscritos con marcadores
-  razonablemente estándar ("Capítulo 1", "Chapter One", etc.);
-  manuscritos sin ninguna convención de títulos dependen por completo
-  del fallback de IA.
-- No hay OCR: un PDF escaneado (imagen) no tiene texto extraíble y el
-  pipeline lo rechazará explícitamente en vez de generar un PDF vacío.
-- No hay persistencia, historial de proyectos ni multiusuario — esto
-  es un MVP demostrable, no un producto empresarial (ver roadmap al
-  final).
+When I started putting AI into this pipeline, I had to make one decision
+that shapes everything else: **the AI does not typeset the book.** Not
+even close.
 
-## Arquitectura
+I've spent a couple of years now working with language models, and if
+there's one thing I've learned, it's that they're excellent at
+understanding text and terrible at calculating exact physical things —
+like which line, on which page, a given paragraph lands on. Asking a
+model to "invent" page numbers is the perfect recipe for a book that
+looks right on a quick read and is wrong 10% of the time — which is
+exactly the worst place to be wrong when something is headed to print.
+
+So in this project, the AI does what it's good at — understanding and
+generating language — and a real composition engine (WeasyPrint, built on
+CSS Paged Media) does what it's good at: measuring rendered text,
+calculating page breaks, and resolving a table of contents with numbers
+that actually exist, not ones someone made up.
+
+## What the program actually does
+
+- **Detects the manuscript's chapters.** It first tries language-specific
+  rules (typical patterns for how a chapter is marked). If that fails on
+  an unusual manuscript, AI steps in — but only to *locate* where a title
+  is written in the text, never to rewrite or summarize anything.
+- **Writes the front matter** (half-title, title page, copyright,
+  dedication) in the manuscript's own language.
+- **Can generate sales copy, if asked**: back-cover synopsis, keywords,
+  categories. This is optional, and if it fails, the book still gets
+  built — it never blocks the main process.
+- **Can run an editorial quality check**: the AI flags things like a
+  name spelled two different ways across the book, so a person can
+  review it. It never corrects anything on its own, only flags it.
+- **Cleans up typography per language**: «angled» quotes in
+  es/ca/it/fr, "curly" quotes in English, the thin non-breaking space
+  before `; : ! ?` that French requires, fixing line-break hyphens
+  carried over from the original document, and so on.
+- **Actually composes the PDF**, with:
+  - Real page numbering, calculated by the engine — not invented.
+  - Mirrored margins with a gutter (inner margin) that changes based on
+    how many pages the final book has, following KDP's official table.
+    This gets resolved in two passes: the first estimates the page
+    count, and with that number, the correct gutter is known for the
+    second, final pass.
+  - Chapters always starting on an odd (recto) page, inserting a blank
+    page when needed — like a real printed book.
+  - Widow and orphan control, automatic hyphenation per language.
+  - A table of contents with real page numbers, resolved by the engine
+    itself.
+  - Running heads with the chapter title on every page.
+
+## How it's put together
+
+I split the project into pieces that don't depend on each other more
+than they need to, because I knew I'd want to swap things out later (the
+AI provider, the rendering engine) without one change quietly breaking
+something else.
 
 ```
 DashBook_IA_Maquetacion/
-├── app.py                       # Interfaz Streamlit (capa fina, sin lógica de negocio)
-├── config.py                    # Configuración global: rutas, idiomas, IA
+├── app.py                    # Streamlit interface — just the screen, no business logic
+├── config.py                 # Global config: paths, languages, AI settings
 │
-├── core/                        # Pipeline de negocio, independiente de la IA y del render
-│   ├── errors.py                # PipelineError / AIProviderError
-│   ├── extractor.py             # Extracción de texto (PDF/DOCX/TXT/MD)
-│   ├── cleaner.py                # Limpieza y normalización tipográfica por idioma
-│   ├── structure_detector.py    # Detección de capítulos (heurística + fallback IA)
-│   └── book_builder.py           # Orquestador del pipeline completo + CLI
+├── core/                     # The heart of the process, knows nothing about AI or rendering
+│   ├── extractor.py           # Pulls text out of PDF/DOCX/TXT/MD
+│   ├── cleaner.py              # Cleans and normalizes typography per language
+│   ├── structure_detector.py  # Finds the chapters
+│   └── book_builder.py         # Orchestrates the whole process end to end
 │
-├── ai/                           # Toda la dependencia de un proveedor de IA vive aquí
-│   ├── client.py                 # Punto único de entrada: generate_json()
-│   ├── front_matter.py           # Generación de front matter (usa ai.client)
-│   ├── kdp_metadata.py           # Sinopsis/keywords/categorías comerciales (opcional)
-│   ├── quality_check.py          # Observaciones de consistencia editorial (opcional)
-│   └── providers/
-│       ├── base.py               # Interfaz AIProvider
-│       └── gemini.py             # Único proveedor implementado hoy
+├── ai/                        # Everything that touches AI lives here, and only here
+│   ├── client.py               # Single entry point into the AI
+│   ├── front_matter.py         # Generates half-title, copyright, dedication
+│   ├── kdp_metadata.py         # Synopsis and keywords (optional)
+│   └── providers/gemini.py     # The provider I use today — swappable
 │
-├── layout/                       # Todo lo relativo a la composición del PDF
-│   ├── kdp_rules.py               # Trim sizes + tabla de gutter dinámico (KDP)
-│   ├── render_backend.py         # Interfaz de motor de render + WeasyPrintBackend
-│   ├── engine.py                  # Orquesta la doble pasada de composición
-│   └── templates/
-│       ├── novel.html
-│       └── novel.css
+├── layout/                    # Everything about typesetting the PDF
+│   ├── kdp_rules.py             # KDP's dynamic gutter table
+│   ├── engine.py                 # The two-pass composition logic
+│   └── templates/                # HTML + CSS defining how the book looks
 │
-├── models/
-│   └── book.py                    # Modelos Pydantic: Manuscript, Chapter, BookProject...
-│
-├── utils/
-│   └── logging.py                 # Logger, timer con callback de progreso, rutas seguras
-│
-├── tests/                         # Tests de humo de lo que más importa: tipografía,
-│                                   # gutter, extracción, capa de IA, configuración
-│
-├── data/
-│   ├── sample/                    # Manuscrito de ejemplo para la demo rápida
-│   ├── input/                     # Manuscritos subidos (no versionado)
-│   └── output/                    # PDFs generados (no versionado)
-├── logs/
-├── requirements.txt
-├── .env.example
-├── .gitignore
-└── README.md
+├── models/book.py              # The data: manuscript, chapter, project...
+├── tests/                       # Tests for what I most care about not breaking
+└── data/, logs/, requirements.txt, .env.example
 ```
 
-### Por qué está organizado así
+**Why organize it this way?** Because if tomorrow I want to switch from
+Gemini to another model, or swap WeasyPrint for a more powerful
+composition engine, I don't want to hunt through file after file to find
+where to make the change. With this structure, I touch one piece (say,
+`ai/providers/gemini.py`) and the rest of the project doesn't even
+notice.
 
-- **`core/` no sabe nada de IA ni de render.** Solo conoce modelos de
-  datos y reglas de negocio (extracción, limpieza, heurística de
-  capítulos). Esto es lo que permite que `ai/` y `layout/` evolucionen
-  — o se sustituyan — sin arrastrar cambios al resto del pipeline.
-- **`ai/` es la única puerta de entrada a un proveedor de IA.** Ningún
-  otro módulo importa `google.genai` ni ningún otro SDK directamente.
-  Ver más abajo cómo cambiar de modelo o de proveedor.
-- **`layout/` separa la interfaz de render (`render_backend.py`) de la
-  orquestación (`engine.py`).** WeasyPrint es la implementación de hoy,
-  pero no la única posible: un motor más avanzado (p. ej. un motor
-  comercial de CSS Paged Media) se añadiría como una nueva clase que
-  implemente `RenderBackend`, sin tocar `engine.py` ni las plantillas.
-
-## Arquitectura: por qué la IA no pagina el libro
-
-Un modelo de lenguaje no puede calcular dónde cae físicamente una línea
-de texto en una página de un tamaño y tipografía específicos. Pedirle
-a una IA que "invente" números de página o saltos de página produce
-resultados incorrectos con total confianza.
-
-Por eso, en este proyecto:
-
-- **La IA se usa solo para tareas de lenguaje**: detectar títulos de
-  capítulo cuando la heurística falla (localizándolos literalmente en
-  el texto, sin reescribirlo), y redactar el front matter.
-- **WeasyPrint (motor CSS Paged Media) hace toda la composición
-  real**: mide el texto renderizado, calcula saltos de página, resuelve
-  la numeración y el índice.
-
-Esta separación es la que garantiza que el PDF final tenga datos
-reales, no aproximaciones generadas por IA — y es la razón por la que
-`ai/` y `layout/` son paquetes completamente independientes entre sí.
-
-## Instalación
+## Getting it running
 
 ```bash
 python -m venv venv
-source venv/bin/activate        # En Windows: venv\Scripts\activate
-
+source venv/bin/activate        # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Configuración del `.env`
-
-Copia `.env.example` a `.env`:
+Copy `.env.example` to `.env` and fill in your API key:
 
 ```bash
 cp .env.example .env
 ```
 
-Y edítalo:
-
 ```env
 AI_PROVIDER=gemini
-AI_API_KEY=tu_clave_aqui
+AI_API_KEY=your_key_here
 AI_MODEL=gemini-2.5-flash
 ```
 
-Si `.env` no está configurado correctamente, la interfaz avisa **al
-arrancar**, antes de aceptar ningún manuscrito — no vas a descubrir el
-problema a mitad del proceso.
+If something in `.env` isn't set up right, the interface warns you the
+moment it starts — before you can upload a manuscript. I'd rather it
+fail there than fail halfway through, after you've already lost five
+minutes.
 
-### Cómo introducir la API key
+### Trying it without your own manuscript
 
-Pega tu clave en `AI_API_KEY` dentro de `.env`. Nunca la escribas en el
-código ni la subas al repositorio (`.env` ya está en `.gitignore`).
-
-### Cómo seleccionar el modelo
-
-Cambia `AI_MODEL` en `.env` por el identificador del modelo que quieras
-usar dentro del proveedor activo (por ejemplo, otro modelo de la
-familia Gemini). No requiere tocar código.
-
-### Cómo cambiar de proveedor de IA en el futuro
-
-1. Crea `ai/providers/<nombre>.py` con una clase que implemente la
-   interfaz `AIProvider` (un único método: `generate_json(prompt) -> dict`).
-2. Regístrala en `ai/client.py`, en `_build_provider()`.
-3. Pon `AI_PROVIDER=<nombre>` en tu `.env`.
-
-Ningún otro archivo del proyecto necesita cambios: `core/structure_detector.py`
-y `ai/front_matter.py` solo llaman a `ai.client.generate_json(...)`, sin
-saber qué proveedor hay detrás.
-
-## Ejecución
-
-### Interfaz web (Streamlit)
+The Streamlit interface has a "use sample manuscript" checkbox, made
+exactly for this: so anyone can see the full pipeline working in a
+couple of minutes.
 
 ```bash
 streamlit run app.py
 ```
 
-La interfaz incluye una casilla **"Usar manuscrito de ejemplo"** para
-ver el pipeline completo funcionando en segundos, sin necesitar un
-manuscrito propio a mano — útil para una primera demostración.
-
-### Línea de comandos
+### From the command line
 
 ```bash
 python -m core.book_builder
 ```
 
-Te pedirá la ruta del manuscrito, título, autor, idioma y trim size, y
-generará el PDF maquetado en `data/output/`.
+It'll ask for the manuscript path, title, author, language, and trim
+size, and leave the finished PDF in `data/output/`.
 
-### Como librería, desde tu propio código
+### From your own code
 
 ```python
 from core.book_builder import build_book
@@ -227,7 +158,7 @@ from models.book import BookMetadata
 metadata = BookMetadata(
     title="El regreso a casa",
     author="Ana Pérez",
-    language="es",       # es | ca | fr | it | en
+    language="es",
     year=2026,
     trim_size="6x9",
 )
@@ -235,29 +166,22 @@ project = build_book("manuscrito.docx", metadata)
 print(project.output_pdf_path, project.estimated_page_count)
 ```
 
-## Flujo de procesamiento
+## The path a manuscript follows
 
 ```
-manuscrito (PDF/DOCX/TXT/MD)
+Manuscript (PDF/DOCX/TXT/MD)
         │
-        ▼
-core.extractor        → texto plano con párrafos normalizados
+Text gets extracted
         │
-        ▼
-core.cleaner           → tipografía normalizada por idioma
+Typography gets cleaned and normalized
         │
-        ▼
-core.structure_detector → lista de capítulos (heurística, o IA si falla)
+Chapters get detected
         │
-        ▼
-ai.front_matter         → portadilla, portada, copyright, dedicatoria (IA)
+AI drafts the front matter
         │
-        ▼
-layout.engine            → doble pasada de composición (WeasyPrint)
-        │                    1ª: estimación de páginas → gutter provisional
-        │                    2ª: nº de páginas real → gutter definitivo → PDF
-        ▼
-   PDF maquetado (data/output/)
+Two-pass composition (page count → gutter → final PDF)
+        │
+Typeset book, ready in data/output/
 ```
 
 ## Tests
@@ -266,27 +190,240 @@ layout.engine            → doble pasada de composición (WeasyPrint)
 pytest
 ```
 
-Cubren lo que más importa para la precisión editorial y la
-mantenibilidad: normalización tipográfica por idioma (incluida la
-regla francesa), los límites de la tabla de gutter dinámico,
-extracción de texto y sus errores de negocio, la capa de IA (parseo
-JSON y manejo de errores, sin red real), y la validación de
-configuración.
+They cover what I actually worry about breaking without noticing:
+per-language typography (including the French thin-space rule), the
+gutter table's limits, text extraction, the AI layer (no real calls,
+just logic), and configuration failing clearly when something's not set
+up right.
 
-## Ejecución en producción / imprenta
+## Before sending it to print
 
-- Revisa siempre los requisitos exactos de tu proveedor de impresión
-  antes de enviar el archivo final: el gutter dinámico de este proyecto
-  sigue la tabla pública de Amazon KDP, que es un punto de partida
-  razonable pero no universal.
-- El front matter y el índice generados por IA deben verificarse
-  siempre por un editor humano antes de mandar a imprenta.
+- The dynamic gutter follows KDP's public table, which is a solid
+  starting point but not the only standard out there — it's worth
+  checking your specific printer's requirements.
+- Everything the AI generates (front matter, table of contents) needs
+  to be reviewed by a person before the book is signed off. AI helps,
+  it doesn't decide.
 
-## Próximos pasos sugeridos
+## What's next
 
-1. Probar con manuscritos reales largos (100+ páginas) en los 5 idiomas.
-2. Añadir plantillas para no ficción y libro infantil/ilustrado.
-3. Evaluar un backend de render de mayor precisión (implementando
-   `RenderBackend`) sobre un manuscrito real, si la editorial necesita
-   un salto de calidad tipográfica más allá de WeasyPrint.
-4. Persistencia y multiusuario, cuando el MVP haya demostrado su valor.
+1. Testing with real, long manuscripts (100+ pages) across all five
+   languages.
+2. Templates for non-fiction and illustrated children's books.
+3. Looking into a more powerful rendering engine, if more typographic
+   precision than WeasyPrint offers is ever needed.
+4. Persistence and multiple users, once the MVP has proven its worth.
+
+---
+
+*[Read in English](#dashbook-ia--from-manuscript-to-typeset-book)*
+
+# DashBook IA — de manuscrito a libro maquetado
+
+Este proyecto nació de una pregunta bastante concreta: ¿se puede coger un
+manuscrito cualquiera (un PDF, un Word, un TXT) y convertirlo en un libro
+con maquetación de verdad, de las que se pueden llevar a imprenta o subir a
+Amazon KDP, sin que un editor tenga que tocar InDesign a mano?
+
+La respuesta corta es sí, pero con matices interesantes. Y esos matices son
+los que hacen que este proyecto merezca la pena contarlo.
+
+Funciona en castellano, català, français, italiano e inglés.
+
+## La idea de fondo
+
+Cuando empecé a meterle IA a este pipeline, tuve que tomar una decisión que
+condiciona todo lo demás: **la IA no maqueta el libro**. Ni de casualidad.
+
+Llevo un par de años trabajando con modelos de lenguaje y si algo he
+aprendido es que son buenísimos entendiendo texto y fatales calculando cosas
+físicas y exactas — como en qué línea de qué página cae un párrafo concreto.
+Pedirle a un modelo que "invente" la numeración de páginas es la receta
+perfecta para que el libro parezca correcto en una lectura rápida y esté
+mal en el 10% de los casos, que es justo el peor sitio para fallar en algo
+que va a imprenta.
+
+Así que en este proyecto la IA hace lo que se le da bien —entender y generar
+lenguaje— y un motor de composición real (WeasyPrint, basado en CSS Paged
+Media) hace lo que se le da bien a él: medir texto, calcular saltos de
+página y resolver un índice con números que existen de verdad, no que
+alguien se ha inventado.
+
+## Qué hace el programa, en la práctica
+
+- **Detecta los capítulos del manuscrito.** Primero lo intenta con reglas
+  específicas de cada idioma (patrones típicos de cómo se marca un
+  capítulo). Si eso falla en un manuscrito raro, entra la IA — pero solo
+  para *localizar* dónde está escrito el título dentro del texto, nunca
+  para reescribir ni resumir nada.
+- **Redacta el front matter** (portadilla, página de título, copyright,
+  dedicatoria) en el idioma del manuscrito.
+- **Puede generar, si se le pide, los textos de venta**: la sinopsis de
+  contraportada, palabras clave, categorías. Esto es opcional y si falla,
+  el libro se compone igual — nunca bloquea el proceso principal.
+- **Puede pasar un control de calidad editorial**: la IA señala cosas como
+  un nombre escrito de dos formas distintas a lo largo del libro, para que
+  lo revise una persona. No corrige nada por su cuenta, solo avisa.
+- **Limpia la tipografía según el idioma**: comillas «angulares» en
+  es/ca/it/fr, comillas curvas en inglés, el espacio fino antes de `; : ! ?`
+  que exige el francés, arregla guiones de corte de línea que suele traer
+  el documento original, etc.
+- **Compone el PDF de verdad**, con:
+  - Numeración de página calculada por el motor, no inventada.
+  - Márgenes espejo con un gutter (margen interior) que cambia según
+    cuántas páginas tenga el libro final, siguiendo la tabla oficial de
+    KDP. Esto se resuelve en dos pasadas: la primera calcula cuántas
+    páginas va a tener el libro, y con ese dato ya se sabe qué gutter le
+    corresponde para la segunda pasada, la definitiva.
+  - Los capítulos siempre empiezan en página impar, metiendo una página en
+    blanco si hace falta — como en un libro de verdad.
+  - Control de viudas y huérfanas, guionado automático según el idioma.
+  - Un índice con números de página reales, resueltos por el propio motor.
+  - Cabeceras vivas con el título del capítulo en cada página.
+
+## Cómo está montado por dentro
+
+Separé el proyecto en piezas que no dependen unas de otras más de lo
+necesario, porque sabía que iba a querer cambiar cosas sobre la marcha (el
+proveedor de IA, el motor de render, etc.) sin que un cambio en un sitio
+rompiera otro sin avisar.
+
+```
+DashBook_IA_Maquetacion/
+├── app.py                    # Interfaz Streamlit — solo la pantalla, sin lógica
+├── config.py                 # Configuración: rutas, idiomas, IA
+│
+├── core/                     # El corazón del proceso, sin saber nada de IA ni de render
+│   ├── extractor.py           # Saca el texto de PDF/DOCX/TXT/MD
+│   ├── cleaner.py              # Limpia y normaliza la tipografía por idioma
+│   ├── structure_detector.py  # Encuentra los capítulos
+│   └── book_builder.py         # Orquesta todo el proceso, de principio a fin
+│
+├── ai/                        # Todo lo que toca IA vive aquí, y solo aquí
+│   ├── client.py               # Único punto de entrada a la IA
+│   ├── front_matter.py         # Genera portadilla, copyright, dedicatoria
+│   ├── kdp_metadata.py         # Sinopsis y palabras clave (opcional)
+│   └── providers/gemini.py     # El proveedor que uso hoy — cambiable
+│
+├── layout/                    # Todo lo relativo a maquetar el PDF
+│   ├── kdp_rules.py             # Tabla de gutter dinámico de KDP
+│   ├── engine.py                 # La doble pasada de composición
+│   └── templates/                # HTML + CSS que define cómo se ve el libro
+│
+├── models/book.py              # Los datos: manuscrito, capítulo, proyecto...
+├── tests/                       # Tests de lo que más me importa que no se rompa
+└── data/, logs/, requirements.txt, .env.example
+```
+
+**¿Por qué separarlo así?** Porque si mañana quiero cambiar de Gemini a
+otro modelo, o cambiar WeasyPrint por un motor de composición más potente,
+no quiero tener que ir archivo por archivo buscando dónde toco. Con esta
+estructura, cambio una pieza (`ai/providers/gemini.py`, por ejemplo) y el
+resto del proyecto ni se entera.
+
+## Cómo lo pongo a funcionar
+
+```bash
+python -m venv venv
+source venv/bin/activate        # En Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Copio `.env.example` a `.env` y relleno mi clave de la API:
+
+```bash
+cp .env.example .env
+```
+
+```env
+AI_PROVIDER=gemini
+AI_API_KEY=tu_clave_aqui
+AI_MODEL=gemini-2.5-flash
+```
+
+Si algo en `.env` no está bien configurado, la interfaz avisa nada más
+arrancar — antes de dejarte subir ningún manuscrito. Prefiero que falle ahí
+a que falle a mitad del proceso, cuando ya has perdido cinco minutos.
+
+### Para probarlo sin manuscrito propio a mano
+
+La interfaz de Streamlit trae una casilla de "usar manuscrito de ejemplo",
+pensada justo para eso: para que cualquiera pueda ver el pipeline completo
+funcionando en un par de minutos.
+
+```bash
+streamlit run app.py
+```
+
+### Desde la terminal
+
+```bash
+python -m core.book_builder
+```
+
+Te pregunta la ruta del manuscrito, título, autor, idioma y tamaño de
+página, y te deja el PDF terminado en `data/output/`.
+
+### Desde tu propio código
+
+```python
+from core.book_builder import build_book
+from models.book import BookMetadata
+
+metadata = BookMetadata(
+    title="El regreso a casa",
+    author="Ana Pérez",
+    language="es",
+    year=2026,
+    trim_size="6x9",
+)
+project = build_book("manuscrito.docx", metadata)
+print(project.output_pdf_path, project.estimated_page_count)
+```
+
+## El camino que sigue un manuscrito
+
+```
+Manuscrito (PDF/DOCX/TXT/MD)
+        │
+Se extrae el texto
+        │
+Se limpia y normaliza la tipografía
+        │
+Se detectan los capítulos
+        │
+La IA redacta el front matter
+        │
+Se compone en dos pasadas (páginas → gutter → PDF final)
+        │
+Libro maquetado, listo en data/output/
+```
+
+## Tests
+
+```bash
+pytest
+```
+
+Cubren lo que de verdad me preocupa que se rompa sin darme cuenta: la
+tipografía por idioma (incluida la regla francesa del espacio fino), los
+límites de la tabla de gutter, la extracción de texto, la capa de IA (sin
+llamadas reales, solo lógica) y que la configuración falle de forma clara
+cuando algo no está bien puesto.
+
+## Antes de mandarlo a imprenta
+
+- El gutter dinámico sigue la tabla pública de KDP, que es un buen punto de
+  partida pero no la única norma que existe — conviene revisar los
+  requisitos concretos de tu imprenta.
+- Todo lo que genera la IA (front matter, índice) lo tiene que revisar una
+  persona antes de dar el libro por bueno. La IA ayuda, no decide.
+
+## Lo que tengo pendiente
+
+1. Probar con manuscritos reales largos (100+ páginas) en los cinco idiomas.
+2. Plantillas para no ficción y libro infantil/ilustrado.
+3. Mirar un motor de render más potente si algún día hace falta más
+   precisión tipográfica de la que da WeasyPrint.
+4. Persistencia y varios usuarios, cuando el MVP haya demostrado que vale
+   la pena.
